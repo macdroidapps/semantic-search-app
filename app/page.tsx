@@ -24,6 +24,22 @@ interface IndexInfo {
   };
 }
 
+interface DeepSeekResponse {
+  success: boolean;
+  question: string;
+  answer: string;
+  context: Array<{
+    index: number;
+    text: string;
+    source: string;
+    score: number;
+  }>;
+  stats: {
+    context_chunks: number;
+    duration_seconds: number;
+  };
+}
+
 export default function Home() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -32,6 +48,11 @@ export default function Home() {
   const [indexInfo, setIndexInfo] = useState<IndexInfo | null>(null);
   const [error, setError] = useState('');
   const [searchStats, setSearchStats] = useState<any>(null);
+
+  // DeepSeek режим
+  const [mode, setMode] = useState<'search' | 'ask'>('search');
+  const [deepSeekAnswer, setDeepSeekAnswer] = useState('');
+  const [deepSeekContext, setDeepSeekContext] = useState<any[]>([]);
 
   const fetchIndexInfo = async () => {
     try {
@@ -56,23 +77,46 @@ export default function Home() {
     setError('');
     setResults([]);
     setSearchStats(null);
+    setDeepSeekAnswer('');
+    setDeepSeekContext([]);
 
     try {
-      const response = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, top_k: 10, min_score: 0.2 }),
-      });
+      if (mode === 'search') {
+        // Обычный поиск
+        const response = await fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, top_k: 10, min_score: 0.2 }),
+        });
 
-      const data = await response.json();
+        const data = await response.json();
 
-      if (!response.ok) {
-        setError(data.error || 'Ошибка поиска');
-        return;
+        if (!response.ok) {
+          setError(data.error || 'Ошибка поиска');
+          return;
+        }
+
+        setResults(data.results);
+        setSearchStats(data.stats);
+      } else {
+        // DeepSeek режим
+        const response = await fetch('/api/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: query, top_k: 5, min_score: 0.2 }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          setError(data.error || 'Ошибка при обращении к DeepSeek');
+          return;
+        }
+
+        setDeepSeekAnswer(data.answer);
+        setDeepSeekContext(data.context);
+        setSearchStats(data.stats);
       }
-
-      setResults(data.results);
-      setSearchStats(data.stats);
     } catch (err: any) {
       setError('Ошибка соединения с сервером: ' + err.message);
     } finally {
@@ -158,16 +202,46 @@ export default function Home() {
         {/* Форма поиска */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
           <form onSubmit={handleSearch} className="space-y-4">
+            {/* Переключатель режимов */}
+            <div className="flex gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setMode('search')}
+                className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  mode === 'search'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                }`}
+              >
+                🔍 Поиск
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('ask')}
+                className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  mode === 'ask'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                }`}
+              >
+                🤖 DeepSeek AI
+              </button>
+            </div>
+
             <div>
               <label htmlFor="search" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Поисковый запрос
+                {mode === 'search' ? 'Поисковый запрос' : 'Ваш вопрос'}
               </label>
               <input
                 id="search"
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Введите вопрос или ключевые слова..."
+                placeholder={
+                  mode === 'search'
+                    ? 'Введите ключевые слова...'
+                    : 'Задайте вопрос по документам...'
+                }
                 className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
                 disabled={loading}
               />
@@ -175,9 +249,19 @@ export default function Home() {
             <button
               type="submit"
               disabled={loading || !query.trim()}
-              className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
+              className={`w-full px-6 py-3 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors ${
+                mode === 'search'
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-purple-600 hover:bg-purple-700'
+              }`}
             >
-              {loading ? '🔍 Поиск...' : '🔍 Найти'}
+              {loading
+                ? mode === 'search'
+                  ? '🔍 Поиск...'
+                  : '🤖 Думаю...'
+                : mode === 'search'
+                ? '🔍 Найти'
+                : '🤖 Спросить DeepSeek'}
             </button>
           </form>
         </div>
@@ -190,13 +274,69 @@ export default function Home() {
         )}
 
         {/* Статистика поиска */}
-        {searchStats && (
+        {searchStats && mode === 'search' && (
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
             <p className="text-sm text-blue-800 dark:text-blue-300">
-              📊 Найдено результатов: {searchStats.total_results} | 
-              Средний score: {searchStats.avg_score} | 
+              📊 Найдено результатов: {searchStats.total_results} |
+              Средний score: {searchStats.avg_score} |
               Время: {searchStats.duration_seconds}s
             </p>
+          </div>
+        )}
+
+        {/* Ответ от DeepSeek */}
+        {deepSeekAnswer && mode === 'ask' && (
+          <div className="space-y-4 mb-6">
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-6">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-2xl">🤖</span>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Ответ DeepSeek AI
+                </h2>
+              </div>
+              <div className="prose dark:prose-invert max-w-none">
+                <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">
+                  {deepSeekAnswer}
+                </p>
+              </div>
+              {searchStats && (
+                <div className="mt-4 pt-4 border-t border-purple-200 dark:border-purple-700">
+                  <p className="text-xs text-purple-700 dark:text-purple-300">
+                    📚 Использовано фрагментов: {searchStats.context_chunks} |
+                    ⏱️ Время обработки: {searchStats.duration_seconds}s
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Контекст использованный для ответа */}
+            {deepSeekContext.length > 0 && (
+              <details className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
+                <summary className="cursor-pointer font-medium text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400">
+                  📄 Показать использованные фрагменты документов ({deepSeekContext.length})
+                </summary>
+                <div className="mt-4 space-y-3">
+                  {deepSeekContext.map((ctx) => (
+                    <div
+                      key={ctx.index}
+                      className="border-l-4 border-indigo-500 pl-4 py-2"
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          {ctx.source}
+                        </span>
+                        <span className="text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded">
+                          {(ctx.score * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-700 dark:text-gray-300">
+                        {ctx.text}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         )}
 
