@@ -4,6 +4,7 @@
  */
 
 import { SearchResult } from './similarity';
+import { RankedResult, RerankingStats } from './reranker';
 
 /**
  * Форматирует найденные чанки в читаемый контекст для LLM
@@ -11,7 +12,7 @@ import { SearchResult } from './similarity';
  * @param results - Результаты семантического поиска
  * @returns Отформатированный текст контекста
  */
-export function formatContextForLLM(results: SearchResult[]): string {
+export function formatContextForLLM(results: SearchResult[] | RankedResult[]): string {
   if (results.length === 0) {
     return 'Релевантной информации в документах не найдено.';
   }
@@ -23,7 +24,7 @@ export function formatContextForLLM(results: SearchResult[]): string {
     }
     acc[result.source].push(result);
     return acc;
-  }, {} as Record<string, SearchResult[]>);
+  }, {} as Record<string, (SearchResult | RankedResult)[]>);
 
   // Формируем текст
   let context = '';
@@ -32,9 +33,20 @@ export function formatContextForLLM(results: SearchResult[]): string {
     context += `\n--- ДОКУМЕНТ ${index + 1}: ${source} ---\n`;
     
     chunks.forEach((chunk, chunkIndex) => {
-      context += `\n[Фрагмент ${chunkIndex + 1}, релевантность: ${(chunk.score * 100).toFixed(1)}%]\n`;
+      // Проверяем есть ли rerank_score
+      const isRanked = 'rerank_score' in chunk;
+      const scoreText = isRanked 
+        ? `релевантность: ${(chunk.rerank_score * 100).toFixed(1)}%`
+        : `релевантность: ${(chunk.score * 100).toFixed(1)}%`;
+      
+      context += `\n[Фрагмент ${chunkIndex + 1}, ${scoreText}]\n`;
       context += chunk.text;
       context += '\n';
+      
+      // Добавляем причину буста если есть
+      if (isRanked && chunk.boost_reason) {
+        context += `(+буст: ${chunk.boost_reason})\n`;
+      }
     });
   });
 
@@ -185,5 +197,81 @@ export interface RAGResult {
     chunks_used: number;
     context_quality: string;
     confidence: number;
+  };
+}
+
+/**
+ * Подготавливает контекст с реранкингом
+ */
+export function prepareContextWithReranking(
+  results: RankedResult[],
+  query: string,
+  maxChars: number = 8000
+): string {
+  let context = '';
+  let currentLength = 0;
+  const selectedResults: RankedResult[] = [];
+
+  // Берём чанки по порядку rerank_score пока не достигнем лимита
+  for (const result of results) {
+    const chunkText = `\n[${result.source}, score: ${result.rerank_score}]\n${result.text}\n`;
+    
+    if (currentLength + chunkText.length <= maxChars) {
+      selectedResults.push(result);
+      currentLength += chunkText.length;
+    } else {
+      break;
+    }
+  }
+
+  // Форматируем выбранные чанки
+  context = formatContextForLLM(selectedResults);
+
+  console.log(`[RAG] Использовано ${selectedResults.length} из ${results.length} чанков (с реранкингом)`);
+  console.log(`[RAG] Размер контекста: ${context.length} символов`);
+
+  return context;
+}
+
+/**
+ * Анализирует качество реранкинга
+ */
+export function analyzeRankingQuality(
+  originalResults: SearchResult[],
+  rerankedResults: RankedResult[]
+): {
+  improvement: number;
+  top_changed: boolean;
+  avg_position_change: number;
+} {
+  // Проверяем изменился ли топ-1
+  const topChanged = originalResults[0]?.id !== rerankedResults[0]?.id;
+  
+  // Считаем средний сдвиг позиций
+  const positionChanges: number[] = [];
+  
+  rerankedResults.forEach((reranked, newIdx) => {
+    const oldIdx = originalResults.findIndex(r => r.id === reranked.id);
+    if (oldIdx >= 0) {
+      positionChanges.push(Math.abs(oldIdx - newIdx));
+    }
+  });
+  
+  const avgPositionChange = positionChanges.length > 0
+    ? positionChanges.reduce((a, b) => a + b, 0) / positionChanges.length
+    : 0;
+  
+  // Средний прирост score
+  const scoreImprovements = rerankedResults.map(rr => {
+    const original = originalResults.find(or => or.id === rr.id);
+    return original ? (rr.rerank_score - original.score) : 0;
+  });
+  
+  const improvement = scoreImprovements.reduce((a, b) => a + b, 0) / scoreImprovements.length;
+  
+  return {
+    improvement: parseFloat(improvement.toFixed(4)),
+    top_changed: topChanged,
+    avg_position_change: parseFloat(avgPositionChange.toFixed(2)),
   };
 }

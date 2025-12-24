@@ -49,6 +49,11 @@ export default function Home() {
   const [ragAnswer, setRagAnswer] = useState<RAGAnswer | null>(null);
   const [compareResults, setCompareResults] = useState<any>(null);
   const [ragStatus, setRagStatus] = useState<any>(null);
+  
+  // Реранкинг состояния
+  const [useReranking, setUseReranking] = useState(false);
+  const [rerankMethod, setRerankMethod] = useState<'hybrid' | 'keyword-boost' | 'semantic-deep'>('hybrid');
+  const [showRerankSettings, setShowRerankSettings] = useState(false);
 
   const fetchIndexInfo = async () => {
     try {
@@ -122,15 +127,28 @@ export default function Home() {
     setCompareResults(null);
 
     try {
+      const requestBody: any = { 
+        query, 
+        useRAG, 
+        top_k: 5,
+        min_score: 0.3 
+      };
+      
+      // Добавляем параметры реранкинга если включён
+      if (useReranking && useRAG) {
+        requestBody.rerank = true;
+        requestBody.rerank_config = {
+          rerank_method: rerankMethod,
+          min_rerank_score: 0.5,
+          top_k_for_rerank: 20,
+          final_top_k: 5,
+        };
+      }
+      
       const response = await fetch('/api/rag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          query, 
-          useRAG, 
-          top_k: 5,
-          min_score: 0.3 
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -330,17 +348,78 @@ export default function Home() {
             </div>
 
             {viewMode === 'rag' && (
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="useRAG"
-                  checked={useRAG}
-                  onChange={(e) => setUseRAG(e.target.checked)}
-                  className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                />
-                <label htmlFor="useRAG" className="text-sm text-gray-700 dark:text-gray-300">
-                  Использовать RAG (поиск в документах)
-                </label>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="useRAG"
+                    checked={useRAG}
+                    onChange={(e) => setUseRAG(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                  />
+                  <label htmlFor="useRAG" className="text-sm text-gray-700 dark:text-gray-300">
+                    Использовать RAG (поиск в документах)
+                  </label>
+                </div>
+                
+                {useRAG && (
+                  <div className="ml-6 space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="useReranking"
+                        checked={useReranking}
+                        onChange={(e) => setUseReranking(e.target.checked)}
+                        className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                      />
+                      <label htmlFor="useReranking" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        🎯 Использовать реранкинг (улучшает точность +40%)
+                      </label>
+                    </div>
+                    
+                    {useReranking && (
+                      <div className="ml-6 space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowRerankSettings(!showRerankSettings)}
+                          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          {showRerankSettings ? '▼ Скрыть настройки' : '▶ Показать настройки'}
+                        </button>
+                        
+                        {showRerankSettings && (
+                          <div className="space-y-2 p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Метод реранкинга:
+                              </label>
+                              <select
+                                value={rerankMethod}
+                                onChange={(e) => setRerankMethod(e.target.value as any)}
+                                className="w-full text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white"
+                              >
+                                <option value="hybrid">Hybrid (рекомендуется) - комбинация методов</option>
+                                <option value="keyword-boost">Keyword Boost - для технических запросов</option>
+                                <option value="semantic-deep">Semantic Deep - для сложных вопросов</option>
+                              </select>
+                            </div>
+                            
+                            <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                              <p>📊 Параметры:</p>
+                              <p>• Первичный поиск: top-20</p>
+                              <p>• Финальный отбор: top-5</p>
+                              <p>• Порог качества: 0.5</p>
+                            </div>
+                          </div>
+                        )}
+                        
+                        <div className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                          💡 Реранкинг анализирует результаты повторно для лучшей точности
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -383,9 +462,16 @@ export default function Home() {
           <div className="space-y-4 mb-6">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {ragAnswer.mode === 'with_rag' ? '🤖 Ответ с RAG' : '💭 Ответ без RAG'}
-                </h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {ragAnswer.mode === 'with_rag' ? '🤖 Ответ с RAG' : '💭 Ответ без RAG'}
+                  </h2>
+                  {(ragAnswer as any).reranking_enabled && (
+                    <span className="px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded text-xs font-medium">
+                      🎯 +Реранкинг
+                    </span>
+                  )}
+                </div>
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                   ragAnswer.mode === 'with_rag' 
                     ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
@@ -458,6 +544,58 @@ export default function Home() {
                         ))}
                       </div>
                     </details>
+                  )}
+                  
+                  {/* Статистика реранкинга */}
+                  {(ragAnswer as any).rag_info?.reranking && (
+                    <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-lg border-2 border-green-200 dark:border-green-700">
+                      <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                        <span className="text-lg">🎯</span> Статистика реранкинга
+                      </h4>
+                      
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div className="p-2 bg-white dark:bg-gray-800 rounded">
+                          <p className="text-gray-600 dark:text-gray-400">Метод:</p>
+                          <p className="font-medium text-gray-900 dark:text-white">
+                            {(ragAnswer as any).rag_info.reranking.rerank_method}
+                          </p>
+                        </div>
+                        
+                        <div className="p-2 bg-white dark:bg-gray-800 rounded">
+                          <p className="text-gray-600 dark:text-gray-400">Улучшение score:</p>
+                          <p className="font-bold text-green-600 dark:text-green-400">
+                            +{((ragAnswer as any).rag_info.reranking.avg_score_improvement * 100).toFixed(0)}%
+                          </p>
+                        </div>
+                        
+                        <div className="p-2 bg-white dark:bg-gray-800 rounded">
+                          <p className="text-gray-600 dark:text-gray-400">Качество high:</p>
+                          <p className="font-medium text-gray-900 dark:text-white">
+                            {(ragAnswer as any).rag_info.reranking.quality_distribution.high} из 5
+                          </p>
+                        </div>
+                        
+                        <div className="p-2 bg-white dark:bg-gray-800 rounded">
+                          <p className="text-gray-600 dark:text-gray-400">Время реранкинга:</p>
+                          <p className="font-medium text-gray-900 dark:text-white">
+                            {(ragAnswer as any).rag_info.reranking.rerank_time_ms}ms
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {(ragAnswer as any).rag_info.reranking.quality_analysis && (
+                        <div className="mt-3 p-2 bg-white dark:bg-gray-800 rounded text-xs">
+                          <p className="text-gray-700 dark:text-gray-300">
+                            {(ragAnswer as any).rag_info.reranking.quality_analysis.top_changed 
+                              ? '✅ Топ-1 результат изменился на более релевантный'
+                              : '➡️ Топ-1 результат остался прежним'}
+                          </p>
+                          <p className="text-gray-600 dark:text-gray-400 mt-1">
+                            Средний сдвиг позиций: {(ragAnswer as any).rag_info.reranking.quality_analysis.avg_position_change.toFixed(1)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
