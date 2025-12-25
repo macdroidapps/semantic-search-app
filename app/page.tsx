@@ -32,7 +32,7 @@ interface RAGAnswer {
   llm_usage?: any;
 }
 
-type ViewMode = 'search' | 'rag' | 'compare';
+type ViewMode = 'search' | 'rag' | 'compare' | 'chat';
 
 export default function Home() {
   const [query, setQuery] = useState('');
@@ -239,9 +239,17 @@ export default function Home() {
       <div className="max-w-6xl mx-auto">
         {/* Заголовок */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-            🤖 RAG Semantic Search
-          </h1>
+          <div className="flex items-center justify-center gap-4 mb-2">
+            <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
+              🤖 RAG Semantic Search
+            </h1>
+            <a
+              href="/chat"
+              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-xl flex items-center gap-2 text-sm"
+            >
+              💬 Чат с памятью
+            </a>
+          </div>
           <p className="text-gray-600 dark:text-gray-300">
             Поиск + AI: сравните режимы с RAG и без RAG
           </p>

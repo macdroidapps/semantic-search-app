@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест UI реранкинга</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">🧪 Тест UI реранкинга</h1>
+        
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <form class="space-y-4">
+                <div>
+                    <input
+                        type="text"
+                        placeholder="Задайте вопрос по документам..."
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                    />
+                </div>
+
+                <!-- Основной чекбокс RAG -->
+                <div class="space-y-3">
+                    <div class="flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            id="useRAG"
+                            checked
+                            class="w-4 h-4 text-indigo-600 border-gray-300 rounded"
+                            onchange="document.getElementById('rerankPanel').style.display = this.checked ? 'block' : 'none'"
+                        />
+                        <label for="useRAG" class="text-sm text-gray-700">
+                            Использовать RAG (поиск в документах)
+                        </label>
+                    </div>
+                    
+                    <!-- Панель реранкинга (появляется когда RAG включён) -->
+                    <div id="rerankPanel" class="ml-6 space-y-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <div class="flex items-center gap-2">
+                            <input
+                                type="checkbox"
+                                id="useReranking"
+                                class="w-4 h-4 text-green-600 border-gray-300 rounded"
+                                onchange="document.getElementById('rerankSettings').style.display = this.checked ? 'block' : 'none'"
+                            />
+                            <label for="useReranking" class="text-sm font-medium text-gray-700">
+                                🎯 Использовать реранкинг (улучшает точность +40%)
+                            </label>
+                        </div>
+                        
+                        <!-- Настройки реранкинга (появляются когда реранкинг включён) -->
+                        <div id="rerankSettings" style="display: none;" class="ml-6 space-y-2">
+                            <button
+                                type="button"
+                                onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'; this.textContent = this.nextElementSibling.style.display === 'none' ? '▶ Показать настройки' : '▼ Скрыть настройки'"
+                                class="text-xs text-indigo-600 hover:underline"
+                            >
+                                ▶ Показать настройки
+                            </button>
+                            
+                            <div style="display: none;" class="space-y-2 p-2 bg-white rounded border border-gray-200">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">
+                                        Метод реранкинга:
+                                    </label>
+                                    <select class="w-full text-xs px-2 py-1 border border-gray-300 rounded">
+                                        <option value="hybrid">Hybrid (рекомендуется) - комбинация методов</option>
+                                        <option value="keyword-boost">Keyword Boost - для технических запросов</option>
+                                        <option value="semantic-deep">Semantic Deep - для сложных вопросов</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="text-xs text-gray-600 space-y-1">
+                                    <p>📊 Параметры:</p>
+                                    <p>• Первичный поиск: top-20</p>
+                                    <p>• Финальный отбор: top-5</p>
+                                    <p>• Порог качества: 0.5</p>
+                                </div>
+                            </div>
+                            
+                            <div class="text-xs text-gray-600 mt-2">
+                                💡 Реранкинг анализирует результаты повторно для лучшей точности
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button
+                    type="submit"
+                    class="w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
+                >
+                    🤖 Спросить у AI
+                </button>
+            </form>
+        </div>
+        
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 class="font-bold mb-2">📝 Инструкция:</h3>
+            <ol class="text-sm space-y-1 list-decimal list-inside">
+                <li>Чекбокс "Использовать RAG" включён по умолчанию</li>
+                <li>Под ним сразу видна серая панель с чекбоксом реранкинга</li>
+                <li>Включи "🎯 Использовать реранкинг"</li>
+                <li>Появится "▶ Показать настройки"</li>
+                <li>Кликни чтобы раскрыть настройки</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>

@@ -13,6 +13,7 @@ interface LLMRequestParams {
   context?: string;      // Дополнительный контекст (для RAG)
   systemPrompt?: string; // Системный промпт (опционально)
   maxTokens?: number;    // Максимум токенов в ответе
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>; // История диалога
 }
 
 /**
@@ -63,6 +64,7 @@ async function callDeepSeek({
   context,
   systemPrompt,
   maxTokens = 2000,
+  conversationHistory,
   apiKey,
   apiUrl,
   model,
@@ -79,7 +81,17 @@ async function callDeepSeek({
     content: finalSystemPrompt,
   });
   
-  // Пользовательское сообщение
+  // Добавляем историю диалога (если есть)
+  if (conversationHistory && conversationHistory.length > 0) {
+    conversationHistory.forEach(msg => {
+      messages.push({
+        role: msg.role,
+        content: msg.content,
+      });
+    });
+  }
+  
+  // Формируем текущее сообщение пользователя
   let userMessage: string;
   
   if (context) {
@@ -109,6 +121,7 @@ ${question}
   console.log('[LLM] Модель:', model);
   console.log('[LLM] Вопрос:', question.substring(0, 100) + '...');
   console.log('[LLM] Контекст:', context ? 'Да' : 'Нет');
+  console.log('[LLM] История:', conversationHistory ? conversationHistory.length : 0, 'сообщений');
 
   try {
     const response = await fetch(apiUrl, {
@@ -163,11 +176,25 @@ async function callClaude({
   context,
   systemPrompt,
   maxTokens = 2000,
+  conversationHistory,
   apiKey,
   apiUrl,
   model,
 }: LLMRequestParams & { apiKey: string; apiUrl: string; model: string }): Promise<LLMResponse> {
-  // Формируем промпт
+  // Формируем сообщения
+  const messages: any[] = [];
+  
+  // Добавляем историю диалога (если есть)
+  if (conversationHistory && conversationHistory.length > 0) {
+    conversationHistory.forEach(msg => {
+      messages.push({
+        role: msg.role,
+        content: msg.content,
+      });
+    });
+  }
+  
+  // Формируем текущее сообщение
   let userMessage: string;
 
   if (context) {
@@ -187,6 +214,11 @@ ${question}
   } else {
     userMessage = question;
   }
+  
+  messages.push({
+    role: 'user',
+    content: userMessage,
+  });
 
   const defaultSystemPrompt = 'Ты полезный AI-ассистент. Отвечай точно, структурированно и по делу.';
 
@@ -194,6 +226,7 @@ ${question}
   console.log('[LLM] Модель:', model);
   console.log('[LLM] Вопрос:', question.substring(0, 100) + '...');
   console.log('[LLM] Контекст:', context ? 'Да' : 'Нет');
+  console.log('[LLM] История:', conversationHistory ? conversationHistory.length : 0, 'сообщений');
 
   try {
     const response = await fetch(apiUrl, {
@@ -207,12 +240,7 @@ ${question}
         model: model,
         max_tokens: maxTokens,
         system: systemPrompt || defaultSystemPrompt,
-        messages: [
-          {
-            role: 'user',
-            content: userMessage,
-          },
-        ],
+        messages: messages,
       }),
     });
 
